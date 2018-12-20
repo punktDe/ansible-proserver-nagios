@@ -1,0 +1,41 @@
+---
+- name: Create directory for additional Nagios plugins
+  file:
+    path: "{{ item }}"
+    state: directory
+  with_items:
+    - "{{ nagios.prefix.config }}/plugins"
+
+- name: Template Nagios plugins
+  template: src="{{ item }}" dest="{{ render_path }}" mode="u+x,g+x,o+x"
+  loop_control:
+    label: "{{ render_path }}"
+  vars:
+    template_dir: "{{ role_path }}/templates/nagios"
+    render_path: "{{ nagios.prefix.config }}/{{ item|strip_prefix(template_dir + '/') }}"
+  with_fileglob:
+    - "{{ role_path }}/templates/nagios/plugins/*.py"
+    - "{{ role_path }}/templates/nagios/plugins/check_*"
+
+- name: Template Nagios configuration
+  template: src="{{ item }}" dest="{{ render_path }}"
+  loop_control:
+    label: "{{ render_path }}"
+  vars:
+    template_dir: "{{ role_path }}/templates"
+    render_path: "{{ nagios.prefix.config }}/{{ item|strip_prefix(template_dir + '/nagios/') }}"
+  with_fileglob:
+    - "{{ role_path }}/templates/nagios/*.cfg"
+    - "{{ role_path }}/templates/nagios/objects/*.cfg"
+  notify: Restart Nagios
+
+- name: Enable Nagios service
+  lineinfile: path="{{ item.path }}" regexp="{{ item.regexp }}" line="{{ item.line }}"
+  loop_control:
+    label: "{{ item.path }}"
+  with_items:
+    - path: /etc/rc.conf
+      regexp: "^nagios_enable="
+      line: 'nagios_enable="YES"'
+  notify:
+    - Start Nagios

@@ -1,0 +1,13 @@
+---
+nagios:
+  prefix:
+    config: /usr/local/etc/nagios
+  contacts: []
+  contactgroups: {}
+  check_user: nagioscheck
+
+  #	us             (MM-DD-YYYY HH:MM:SS)
+  #	euro           (DD-MM-YYYY HH:MM:SS)
+  #	iso8601        (YYYY-MM-DD HH:MM:SS)
+  #	strict-iso8601 (YYYY-MM-DDTHH:MM:SS)
+  date_format: euro

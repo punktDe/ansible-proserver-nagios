@@ -1,0 +1,24 @@
+---
+- name: Start Nagios
+  service:
+    name: nagios
+    state: started
+  register: nagios_service_result
+
+- name: Restart Nagios
+  service:
+    name: nagios
+    state: restarted
+  when: not (nagios_service_result is defined and nagios_service_result.changed)
+
+- name: Start fcgiwrap
+  service:
+    name: fcgiwrap
+    state: started
+  register: fcgiwrap_service_result
+
+- name: Restart fcgiwrap
+  service:
+    name: fcgiwrap
+    state: restarted
+  when: not (fcgiwrap_service_result is defined and fcgiwrap_service_result.changed)

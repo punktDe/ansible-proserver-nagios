@@ -1,0 +1,192 @@
+#!/usr/local/bin/python3
+
+import sys
+import socket
+import argparse
+from datetime import datetime
+from datetime import timedelta
+from urllib import request
+from urllib.error import HTTPError
+from urllib.parse import urlparse
+from ssl import CertificateError
+#import xml.etree.ElementTree as ET
+
+
+class HTML():
+    status = None
+    body = None
+    #dom = None
+
+    def __init__(self, url):
+        self.url = url
+        self.fetch()
+        #self.parse()
+
+    def fetch(self):
+        try:
+            with request.urlopen(self.url) as response:
+                self.status = response.getcode()
+                self.body = response.read().decode()
+        except HTTPError as e:
+            if 100 <= e.code <= 599:
+                self.status = e.code
+                self.body = e.read().decode()
+            else:
+                raise e
+
+    #def parse(self):
+    #    self.dom = ET.fromstring(self.body.decode())
+
+    def check_str(self, text, count=None, min=None, max=None):
+        text_count = self.body.count(text)
+        information_text = "'{}' was found {} times in response".format(text, text_count)
+        if count is not None and text_count != count:
+            return False, '{} (expected ={})'.format(information_text, count)
+        if min is not None and text_count < min:
+            return False, '{} (expected <{})'.format(information_text, min)
+        if max is not None and text_count > max:
+            return False, '{} (expected >{})'.format(information_text, max)
+        return True, information_text
+
+    def check_status(self, expected_status):
+        information_text = 'Status {}'.format(self.status)
+        if self.status != expected_status:
+            return False, '{} (expected {})'.format(information_text, expected_status)
+        return True, information_text
+
+
+class NagiosPlugin:
+    def __init__(self):
+        self.service_status = None
+        self.information_text = []
+
+    def submit_check(self, check_status, information_text):
+        self._next_service_status(check_status.upper())
+        self.information_text.append(information_text)
+
+    def _next_service_status(self, new_status):
+        if new_status not in ('OK', 'WARNING', 'CRITICAL', 'UNKNOWN'):
+            raise Exception('Invalid status: {}'.format(new_status))
+
+        if not self.service_status:
+            self.service_status = new_status
+        elif self.service_status == 'UNKNOWN' and new_status in ('WARNING', 'CRITICAL'):
+            self.service_status = new_status
+        elif self.service_status == 'OK' and new_status in ('UNKNOWN', 'WARNING', 'CRITICAL'):
+            self.service_status = new_status
+        elif self.service_status == 'WARNING' and new_status == 'CRITICAL':
+            self.service_status = new_status
+
+    def output(self):
+        return 'HTML {}: {}'.format(self.service_status or 'UNKNOWN', ', '.join(self.information_text))
+
+    def status(self):
+        if self.service_status == 'OK':
+            return 0
+        if self.service_status == 'WARNING':
+            return 1
+        if self.service_status == 'CRITICAL':
+            return 2
+        return 3
+
+
+def check_ip(hostname, expected_ips, ipv4=True, ipv6=True):
+    actual_ips = list(set([ip[4][0] for ip in socket.getaddrinfo(hostname, 443) if (ipv4 and '.' in ip[4][0]) or (ipv6 and ':' in ip[4][0])]))
+    information_text = 'IPs: {}'.format(', '.join(actual_ips))
+
+    if ipv4:
+        expected_ipv4 = set([ip for ip in expected_ips if '.' in ip])
+        actual_ipv4 = set([ip for ip in actual_ips if '.' in ip])
+        if expected_ipv4 != actual_ipv4:
+            return False, '{} (expected {})'.format(information_text, ', '.join(set(expected_ips)))
+
+    if ipv6:
+        expected_ipv6 = set([ip for ip in expected_ips if ':' in ip])
+        actual_ipv6 = set([ip for ip in actual_ips if ':' in ip])
+        if expected_ipv6 != actual_ipv6:
+            return False, '{} (expected {})'.format(information_text, ', '.join(set(expected_ips)))
+
+    return True, information_text
+
+
+def template_strings(o):
+    if isinstance(o, argparse.Namespace):
+        for key in vars(o).keys():
+            setattr(o, key, template_strings(getattr(o, key)))
+
+    elif isinstance(o, list):
+        return [template_strings(i) for i in o]
+
+    elif isinstance(o, str):
+        return o.format(
+            yesterday=datetime.now() + timedelta(days=-1),
+            now=datetime.now(),
+            tomorrow=datetime.now() + timedelta(days=1),
+        )
+
+    return o
+
+
+def parse_args():
+    # e.g. check_html --url https://example.com/ --check-str warning:foobar::2:3
+    # ("foobar" must occur at least 2 and max 3 times on the page)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--url', required=True)
+    parser.add_argument('--check-status')
+    parser.add_argument('--check-str', action='append')
+    parser.add_argument('--check-ip', nargs='+')
+    parser.add_argument('--check-ipv4', nargs='+')
+    parser.add_argument('--check-ipv6', nargs='+')
+    return parser.parse_args()
+
+
+def parse_str_int_req(txt):
+    sep = txt.split(':')
+    return [sep[0], int(sep[1])]
+
+
+def parse_str_str_int_int_int_opt(txt):
+    sep = txt.split(':')
+    res = sep[:2]
+    res.extend([int(n) if n else None for n in sep[2:]])
+    res.extend([None] * (5 - len(res)))
+    return res
+
+
+if __name__ == '__main__':
+    args = parse_args()
+    nagios_plugin = NagiosPlugin()
+
+    args = template_strings(args)
+
+    if args.check_ip:
+        check_is_ok, check_information_text = check_ip(urlparse(args.url).hostname, args.check_ip)
+        nagios_plugin.submit_check('CRITICAL' if not check_is_ok else 'OK', check_information_text)
+
+    if args.check_ipv4:
+        check_is_ok, check_information_text = check_ip(urlparse(args.url).hostname, args.check_ipv4, ipv6=False)
+        nagios_plugin.submit_check('CRITICAL' if not check_is_ok else 'OK', check_information_text)
+
+    if args.check_ipv6:
+        check_is_ok, check_information_text = check_ip(urlparse(args.url).hostname, args.check_ipv6, ipv4=False)
+        nagios_plugin.submit_check('CRITICAL' if not check_is_ok else 'OK', check_information_text)
+
+    try:
+        html = HTML(args.url)
+    except (HTTPError, CertificateError) as e:
+        nagios_plugin.submit_check('CRITICAL', '{}: {}'.format(e.__class__.__name__, str(e)))
+        print(nagios_plugin.output())
+        sys.exit(nagios_plugin.status())
+
+    if args.check_status:
+        parsed_check = parse_str_int_req(args.check_status)
+        check_is_ok, check_information_text = html.check_status(parsed_check[1])
+        nagios_plugin.submit_check(parsed_check[0] if not check_is_ok else 'OK', check_information_text)
+
+    for check in args.check_str or []:
+        parsed_check = parse_str_str_int_int_int_opt(check)
+        check_is_ok, check_information_text = html.check_str(*parsed_check[1:])
+        nagios_plugin.submit_check(parsed_check[0] if not check_is_ok else 'OK', check_information_text)
+
+    print(nagios_plugin.output())
+    sys.exit(nagios_plugin.status())

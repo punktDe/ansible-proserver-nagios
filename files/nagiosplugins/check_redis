@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+
+# LICENSE: MIT
+#
+# Copyright (C) 2014 Samuel Stauffer
+# Modified by Florian Kaiser / punkt.de, June 2018
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to
+# deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+import socket
+import sys
+from optparse import OptionParser
+from collections import OrderedDict
+
+EXIT_OK = 0
+EXIT_WARN = 1
+EXIT_CRITICAL = 2
+
+
+def get_info(host, port, timeout):
+    socket.setdefaulttimeout(timeout or None)
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect((host, port))
+    s.send("*1\r\n$4\r\ninfo\r\n".encode())
+    buf = ""
+    BUFF_SIZE=1024
+    while True:
+        part = s.recv(BUFF_SIZE).decode()
+        buf += part
+        if len(part) < BUFF_SIZE:
+            break
+    s.close()
+    return OrderedDict(x.split(':', 1) for x in buf.split('\r\n') if ':' in x)
+
+
+def build_parser():
+    parser = OptionParser()
+    parser.add_option("-s", "--server", dest="server", help="Redis server to connect to.", default="127.0.0.1")
+    parser.add_option("-p", "--port", dest="port", help="Redis port to connect to.", type="int", default=6379)
+    parser.add_option("--memory-warn", dest="warn_memory", help="Memory utilization (in MB) that triggers a warning status.", type="int", default=0)
+    parser.add_option("--memory-crit", dest="crit_memory", help="Memory utilization (in MB) that triggers a critical status.", type="int", default=0)
+    parser.add_option("--max-keys-warn", dest="warn_max_keys", help="Maximum number of keys, warning status.", type="int", default=0)
+    parser.add_option("--max-keys-crit", dest="crit_max_keys", help="Maximum number of keys, critical status.", type="int", default=0)
+    parser.add_option("-t", "--timeout", dest="timeout", help="Number of milliesconds to wait before timing out and considering redis down", type="int", default=2000)
+    parser.add_option("--strings", dest="strings", help="Show string values such as config_file or maxmemory_policy in performance data", action="store_true", default=False)
+    return parser
+
+
+def return_status(status, info, exit_status):
+    print('REDIS {} | {}'.format(status, ' '.join(['{}={}'.format(key, value) for key, value in info.items() if not key.startswith('#')])))
+    sys.exit(exit_status)
+
+
+def main():
+    parser = build_parser()
+    options, _args = parser.parse_args()
+
+    try:
+        info = get_info(options.server, int(options.port), timeout=options.timeout / 1000.0)
+    except socket.error as exc:
+        return_status("CRITICAL: Error connecting or getting INFO from redis {}:{}: {}".format(options.server, options.port, exc), {}, EXIT_CRITICAL)
+
+    memory = round(int(info.get("used_memory_rss") or info["used_memory"]) / (1024*1024))
+    num_keys = sum([[int(db_keys[5:]) for db_keys in db_info.split(",") if db_keys.startswith("keys=")][0] for db_name, db_info in info.items() if db_name.startswith('db')])
+    info["keys_count"] = num_keys
+
+    if not options.strings:
+        del info["redis_version"]
+        del info["redis_git_sha1"]
+        del info["redis_build_id"]
+        del info["redis_mode"]
+        del info["os"]
+        del info["multiplexing_api"]
+        del info["gcc_version"]
+        del info["run_id"]
+        del info["executable"]
+        del info["config_file"]
+        del info["maxmemory_policy"]
+        del info["mem_allocator"]
+        del info["rdb_last_bgsave_status"]
+        del info["aof_last_bgrewrite_status"]
+        del info["aof_last_write_status"]
+        del info["role"]
+
+    if options.crit_memory and memory > options.crit_memory:
+        return_status("CRITICAL: Redis memory usage {}MB (threshold {}MB)".format(memory, options.crit_memory), info, EXIT_CRITICAL)
+    elif options.warn_memory and memory > options.warn_memory:
+        return_status("WARNING: Redis memory usage {}MB (threshold {}MB)".format(memory, options.warn_memory), info, EXIT_WARN)
+
+    if options.crit_max_keys and num_keys > options.crit_max_keys:
+        return_status("CRITICAL: Key count {} (threshold {})".format(num_keys, options.crit_max_keys), info, EXIT_CRITICAL)
+    elif options.warn_max_keys and num_keys > options.warn_max_keys:
+        return_status("WARNING: Key count {} (threshold {})".format(num_keys, options.warn_max_keys), info, EXIT_WARN)
+
+    return_status("OK: Redis memory usage {}MB, key count {}".format(memory, num_keys), info, EXIT_OK)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+import sys
+import os
+import re
+
+if __name__ == '__main__':
+    if 'SSH_ORIGINAL_COMMAND' not in os.environ:
+        print('Nagios plugin executor: no plugin specified')
+        sys.exit(1)
+    command = os.environ['SSH_ORIGINAL_COMMAND'].split(' ')
+    command[0] = re.sub('[^a-zA-Z_-]+', '', command[0])
+    command[0] = '{}/{}'.format(os.path.dirname(os.path.realpath(__file__)), command[0])
+    if not os.path.isfile(command[0]):
+        print('Nagios plugin executor: plugin not found')
+        sys.exit(1)
+    os.execv(command[0], command)

@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+
+import sys
+import argparse
+import urllib.request
+import json
+
+STATUS_OK = 'OK'
+STATUS_WARNING = 'WARNING'
+STATUS_CRITICAL = 'CRITICAL'
+STATUS_UNKNOWN = 'UNKNOWN'
+
+
+class Elasticsearch():
+	def __init__(self, url, index):
+		self.url = url
+		self.index = index
+
+	def _get(self, path, format='json'):
+		response = urllib.request.urlopen('{}/{}'.format(self.url, path)).read().decode()
+		if format == 'json':
+			response = json.loads(response)
+		else:
+			raise NotImplementedError('Invalid format: {}'.format(format))
+		return response
+
+	def _count(self):
+		return self._get('{}/_count'.format(self.index))
+
+	def num_docs(self):
+		return int(self._count()['count'])
+
+
+def parse_args():
+	parser = argparse.ArgumentParser()
+	parser.add_argument('--url', help='Elasticsearch API URL', default='http://[::1]:9200')
+	parser.add_argument('--index', help='Name of the index', required=True)
+	parser.add_argument('--min-docs-warn', type=int, help='Minimum number of documents in index (warning)', required=False)
+	parser.add_argument('--min-docs-crit', type=int, help='Minimum number of documents in index (critical)', required=False)
+	return parser.parse_args()
+
+
+def main():
+	args = parse_args()
+	es = Elasticsearch(args.url, args.index)
+
+	status = STATUS_OK
+	num_docs = es.num_docs()
+
+	if status != STATUS_CRITICAL and args.min_docs_crit and num_docs < args.min_docs_crit:
+		status = STATUS_CRITICAL
+	elif status != STATUS_WARNING and args.min_docs_warn and num_docs < args.min_docs_warn:
+		status = STATUS_WARNING
+
+	print("""
+	ELASTICSEARCH_INDEX {status}: {num_docs} documents in '{index}' index
+	""".strip().format(status=status, num_docs=num_docs, index=args.index))
+
+	if status == STATUS_OK:
+		sys.exit(0)
+	elif status == STATUS_WARNING:
+		sys.exit(1)
+	elif status == STATUS_CRITICAL:
+		sys.exit(2)
+	else:
+		raise NotImplementedError('Invalid status: {}'.format(status))
+
+
+if __name__ == '__main__':
+	try:
+		main()
+	except Exception as e:
+		print('{}: {}'.format(STATUS_UNKNOWN, e))
+		sys.exit(3)

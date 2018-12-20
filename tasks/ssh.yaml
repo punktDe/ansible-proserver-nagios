@@ -1,0 +1,87 @@
+---
+- name: Generate SSH key for Nagios user
+  user:
+    name: nagios
+    generate_ssh_key: yes
+    ssh_key_type: "{{ item.ssh_key_type }}"
+    ssh_key_file: "{{ item.ssh_key_file }}"
+    ssh_key_comment: "{{ item.ssh_key_comment }}"
+  loop_control:
+    label: "{{ item.ssh_key_file }}"
+  with_items:
+    - ssh_key_type: ed25519
+      ssh_key_file: "/home/nagios/.ssh/id_ed25519"
+      ssh_key_comment: "nagios@{{ inventory_hostname }}"
+
+- name: Create user for Nagios checks
+  user:
+    name: "{{ nagios.check_user }}"
+    #comment: >
+    #  Nagios checks from {{ play_hosts|map('extract', hostvars)|map(attribute='inventory_hostname')|list|join(' and ') }}
+  loop_control:
+    label: "{{ nagios.check_user }}"
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['nagiosclient'] }}"
+
+- name: Download public key of Nagios user
+  fetch:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    flat: yes
+  loop_control:
+    label: "{{ item.src }}"
+  with_items:
+    - src: "/home/nagios/.ssh/id_ed25519.pub"
+      dest: "{{ role_path }}/files/public_keys/nagios@{{ inventory_hostname }}.pub"
+
+- name: Upload public key of Nagios user to Nagios check user
+  authorized_key:
+    user: "{{ user }}"
+    key: "{{ pubkey }}"
+    key_options: 'command="$HOME/nagios/{{ inventory_hostname }}/call",no-port-forwarding,no-x11-forwarding,no-agent-forwarding'
+  loop_control:
+    label: '{{ item }} user={{ user }} pubkey="{{ pubkey }}"'
+  vars:
+    user: "{{ nagios.check_user }}"
+    pubkey: "{{ lookup('file', role_path + '/files/public_keys/nagios@{{ inventory_hostname }}.pub') }}"
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['nagiosclient'] }}"
+
+- name: Template Nagios plugins
+  copy:
+    src: "{{ src }}"
+    dest: "{{ dest }}"
+    mode: +x
+  loop_control:
+    label: "{{ dest }}"
+  vars:
+    src: "{{ role_path }}/files/nagiosplugins/"
+    dest: "/home/{{ nagios.check_user }}/nagios/{{ inventory_hostname }}/"
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['nagiosclient'] }}"
+
+- name: Download public key of hosts checked by Nagios
+  fetch:
+    src: "{{ src }}"
+    dest: "{{ dest }}"
+    flat: yes
+  loop_control:
+    label: "{{ src }}"
+  vars:
+    src: /etc/ssh/ssh_host_ed25519_key.pub
+    dest: "{{ role_path }}/files/public_keys/{{ item }}.pub"
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['nagiosclient'] }}"
+
+- name: Upload public key of Nagios host to Nagios check user
+  known_hosts:
+    path: "{{ known_hosts }}"
+    name: "{{ host_name }}"
+    key: "{{ host_name }} {{ host_key }}"
+  loop_control:
+    label: "{{ known_hosts }} host_name={{ host_name }}"
+  vars:
+    known_hosts: /home/nagios/.ssh/known_hosts
+    host_name: "{{ hostvars[item].ansible_local.proserver.public_ipv4_address }}"
+    host_key: "{{ lookup('file', role_path + '/files/public_keys/{{ hostvars[item].inventory_hostname }}.pub') }}"
+  with_items: "{{ groups['nagiosclient'] }}"

@@ -1,0 +1,5 @@
+---
+- import_tasks: ssh.yaml
+- import_tasks: fcgiwrap.yaml
+- import_tasks: nginx.yaml
+- import_tasks: nagios.yaml

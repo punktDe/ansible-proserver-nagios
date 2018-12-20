@@ -1,0 +1,30 @@
+---
+- name: Configure fcgiwrap service
+  lineinfile: path="{{ rc_conf }}" regexp="{{ item.regexp }}" line="{{ item.line }}"
+  loop_control:
+    label: "{{ rc_conf }} {{ item.line }}"
+  vars:
+    rc_conf: /etc/rc.conf
+  with_items:
+    - regexp: "^fcgiwrap_user="
+      line: 'fcgiwrap_user="www"'
+    - regexp: "^fcgiwrap_group="
+      line: 'fcgiwrap_group="www"'
+    - regexp: "^fcgiwrap_socket_owner="
+      line: 'fcgiwrap_socket_owner="www"'
+    - regexp: "^fcgiwrap_socket_group="
+      line: 'fcgiwrap_socket_group="www"'
+  notify:
+    - Restart fcgiwrap
+
+- name: Enable fcgiwrap service
+  lineinfile: path="{{ rc_conf }}" regexp="{{ item.regexp }}" line="{{ item.line }}"
+  loop_control:
+    label: "{{ rc_conf }} {{ item.line }}"
+  vars:
+    rc_conf: /etc/rc.conf
+  with_items:
+    - regexp: "^fcgiwrap_enable="
+      line: 'fcgiwrap_enable="YES"'
+  notify:
+    - Start fcgiwrap
