@@ -2,6 +2,7 @@
 nagios:
   prefix:
     config: /usr/local/etc/nagios
+    home: /var/spool/nagios
   contacts: []
   contactgroups: {}
   check_user: nagioscheck
