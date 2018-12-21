@@ -3,6 +3,7 @@
 import sys
 import socket
 import argparse
+import json
 from datetime import datetime
 from datetime import timedelta
 from urllib import request
@@ -15,16 +16,34 @@ from ssl import CertificateError
 class HTML():
     status = None
     body = None
+    request_method = None
+    request_body = None
+    request_content_type = None
     #dom = None
 
-    def __init__(self, url):
+    def __init__(self, url, request_method, request_content_type, request_body):
         self.url = url
+        self.request_method = request_method
+        self.request_content_type = request_content_type
+        self.request_body = request_body
         self.fetch()
         #self.parse()
 
     def fetch(self):
         try:
-            with request.urlopen(self.url) as response:
+            opener = request.build_opener(request.HTTPHandler)
+
+            req_body = None
+            if self.request_body is not None:
+                req_body = self.request_body.encode()
+            req = request.Request(self.url, data=req_body)
+
+            if self.request_content_type:
+                req.add_header('Content-Type', self.request_content_type)
+
+            req.get_method = lambda: self.request_method
+
+            with opener.open(req) as response:
                 self.status = response.getcode()
                 self.body = response.read().decode()
         except HTTPError as e:
@@ -47,6 +66,31 @@ class HTML():
         if max is not None and text_count > max:
             return False, '{} (expected >{})'.format(information_text, max)
         return True, information_text
+
+    def check_json(self, key, operator, value):
+        try:
+            data = json.loads(self.body)
+        except Exception as e:
+            return False, 'response is not valid JSON: {}'.format(str(e))
+        for subkey in key.split('.'):
+            try:
+                data = data[subkey]
+            except KeyError as e:
+                return False, "key '{}' not found in JSON".format(key)
+        information_text = "{} is '{}'".format(key, data)
+        if operator == '==':
+            if str(data) == value:
+                return True, information_text
+            else:
+                return False, "{} (expected '{}')".format(information_text, value)
+        elif operator == '!=':
+            information_text = "{} (expected !='{}')".format(information_text, value)
+            if str(data) == value:
+                return False, information_text
+            else:
+                return True, information_text
+        else:
+            raise ValueError('Invalid operator: {}'.format(operator))
 
     def check_status(self, expected_status):
         information_text = 'Status {}'.format(self.status)
@@ -134,11 +178,19 @@ def parse_args():
     parser.add_argument('--url', required=True)
     parser.add_argument('--check-status')
     parser.add_argument('--check-str', action='append')
+    parser.add_argument('--check-json', action='append')
     parser.add_argument('--check-ip', nargs='+')
     parser.add_argument('--check-ipv4', nargs='+')
     parser.add_argument('--check-ipv6', nargs='+')
+    parser.add_argument('--request-method', default='GET')
+    parser.add_argument('--request-content-type', default=None)
+    parser.add_argument('--request-body', default=None)
     return parser.parse_args()
 
+
+def parse_str_str_str_str(txt):
+    sep = txt.split(':')
+    return [sep[0], sep[1], sep[2], sep[3]]
 
 def parse_str_int_req(txt):
     sep = txt.split(':')
@@ -172,7 +224,7 @@ if __name__ == '__main__':
         nagios_plugin.submit_check('CRITICAL' if not check_is_ok else 'OK', check_information_text)
 
     try:
-        html = HTML(args.url)
+        html = HTML(args.url, args.request_method, args.request_content_type, args.request_body)
     except (HTTPError, CertificateError) as e:
         nagios_plugin.submit_check('CRITICAL', '{}: {}'.format(e.__class__.__name__, str(e)))
         print(nagios_plugin.output())
@@ -186,6 +238,11 @@ if __name__ == '__main__':
     for check in args.check_str or []:
         parsed_check = parse_str_str_int_int_int_opt(check)
         check_is_ok, check_information_text = html.check_str(*parsed_check[1:])
+        nagios_plugin.submit_check(parsed_check[0] if not check_is_ok else 'OK', check_information_text)
+
+    for check in args.check_json or []:
+        parsed_check = parse_str_str_str_str(check)
+        check_is_ok, check_information_text = html.check_json(*parsed_check[1:])
         nagios_plugin.submit_check(parsed_check[0] if not check_is_ok else 'OK', check_information_text)
 
     print(nagios_plugin.output())
