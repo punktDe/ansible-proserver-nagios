@@ -13,6 +13,23 @@
       ssh_key_file: "{{ nagios.prefix.home }}/.ssh/id_ed25519"
       ssh_key_comment: "nagios@{{ inventory_hostname }}"
 
+- name: Configure OpenSSH to use control sockets
+  lineinfile:
+    path: "{{ path }}"
+    create: yes
+    regexp: "^{{ item.key }}[\\s\\t]+"
+    line: "{{ item.key }} {{ item.value }}"
+    owner: nagios
+    group: nagios
+  loop_control:
+    label: "{{ path }} option={{ item.key }}"
+  with_dict:
+    ControlMaster: auto
+    ControlPath: /tmp/ssh_controlmaster_%u_%h_%p_%r
+    ControlPersist: 600
+  vars:
+    path: "{{ nagios.prefix.home }}/.ssh/config"
+
 - name: Create user for Nagios checks
   user:
     name: "{{ nagios.check_user }}"
