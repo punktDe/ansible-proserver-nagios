@@ -27,6 +27,7 @@
     render_path: "{{ nagios.prefix.config }}/{{ item|strip_prefix(template_dir + '/nagios/') }}"
   with_fileglob:
     - "{{ role_path }}/templates/nagios/*.cfg"
+    - "{{ role_path }}/templates/nagios/*.php"
     - "{{ role_path }}/templates/nagios/objects/*.cfg"
   notify: Restart Nagios
 
