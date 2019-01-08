@@ -68,7 +68,7 @@
   loop_control:
     label: "{{ src }}"
   vars:
-    src: /etc/ssh/ssh_host_ed25519_key.pub
+    src: "{{ nagios.sshd_public_key }}"
     dest: "{{ role_path }}/files/public_keys/{{ item }}.pub"
   delegate_to: "{{ item }}"
   with_items: "{{ groups['nagiosclient'] }}"
