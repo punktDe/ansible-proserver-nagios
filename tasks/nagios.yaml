@@ -14,8 +14,9 @@
     template_dir: "{{ role_path }}/templates/nagios"
     render_path: "{{ nagios.prefix.config }}/{{ item|strip_prefix(template_dir + '/') }}"
   with_fileglob:
-    - "{{ role_path }}/templates/nagios/plugins/*.py"
     - "{{ role_path }}/templates/nagios/plugins/check_*"
+    - "{{ role_path }}/templates/nagios/plugins/ping-noc"
+    - "{{ role_path }}/templates/nagios/plugins/telegram"
 
 - name: Template Nagios configuration
   template: src="{{ item }}" dest="{{ render_path }}"
