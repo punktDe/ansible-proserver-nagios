@@ -13,3 +13,4 @@ nagios:
   #	strict-iso8601 (YYYY-MM-DDTHH:MM:SS)
   date_format: euro
   sshd_public_key: /etc/ssh/ssh_host_ed25519_key.pub
+  prometheus_nagios_exporter: no

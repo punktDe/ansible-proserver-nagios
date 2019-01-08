@@ -1,0 +1,3 @@
+[program:prometheus-nagios-exporter]
+user=nagios
+command={{ nagios.prefix.home }}/prometheus-nagios-exporter/bin/python {{ nagios.prefix.home }}/prometheus-nagios-exporter/prometheus-nagios-exporter.py --path {{ nagios.prefix.home }}/rw/livestatus --host ::1 --perf_data --all_metrics --data_names="check_partition_space=value;value_free;;;value_total"
