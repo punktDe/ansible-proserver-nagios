@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+
+import sys
+import argparse
+import subprocess
+
+
+class PingConnection:
+    def __init__(self, ssh, host, user):
+        self.ssh = ssh
+        self.host = host
+        self.user = user
+
+    def ping(self):
+        command = [self.ssh, '-T', self.host, '-l', self.user]
+        subprocess_result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return PingResult(subprocess_result)
+
+
+class PingResult:
+    def __init__(self, subprocess_result):
+        self.returncode = subprocess_result.returncode
+        self.stderr = subprocess_result.stderr
+
+    def nagios_plugin_output(self):
+        service_status = 'OK' if self.returncode == 0 else 'CRITICAL'
+        information_text = self.stderr.decode().strip() or 'Ping successfully sent'
+        return '{}: {}'.format(service_status, information_text)
+
+    def nagios_plugin_status(self):
+        return 0 if self.returncode == 0 else 2
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--ssh', default='ssh')
+    parser.add_argument('--host', required=True)
+    parser.add_argument('--user', default='ping')
+    return parser.parse_args()
+
+
+if __name__ == '__main__':
+    args = parse_args()
+    ping_result = PingConnection(args.ssh, args.host, args.user).ping()
+    print(ping_result.nagios_plugin_output())
+    sys.exit(ping_result.nagios_plugin_status())
