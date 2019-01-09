@@ -4,4 +4,3 @@
 - import_tasks: nginx.yaml
 - import_tasks: nagios.yaml
 - import_tasks: prometheus-nagios-exporter.yaml
-  when: nagios.prometheus_nagios_exporter

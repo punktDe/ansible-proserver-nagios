@@ -1,27 +1,30 @@
 ---
-- name: Install packages required by prometheus-nagios-exporter
-  pip: name="{{ item }}" virtualenv="{{ virtualenv }}"
-  loop_control:
-    label: "{{ virtualenv }} package={{ item }}"
-  vars:
-    virtualenv: "{{ nagios.prefix.home }}/prometheus-nagios-exporter"
-  with_items:
-    - flask
+- block:
+  - name: Install packages required by prometheus-nagios-exporter
+    pip: name="{{ item }}" virtualenv="{{ virtualenv }}"
+    loop_control:
+      label: "{{ virtualenv }} package={{ item }}"
+    vars:
+      virtualenv: "{{ nagios.prefix.home }}/prometheus-nagios-exporter"
+    with_items:
+      - flask
 
-- name: Install prometheus-nagios-exporter
-  copy: src="{{ src }}" dest="{{ dest }}" mode="{{ mode }}"
-  loop_control:
-    label: "{{ dest }}"
-  vars:
-    src: "{{ role_path }}/files/prometheus-nagios-exporter/nagios_exporter.py"
-    dest: "{{ nagios.prefix.home }}/prometheus-nagios-exporter/prometheus-nagios-exporter.py"
-    mode: +x
+  - name: Install prometheus-nagios-exporter
+    copy: src="{{ src }}" dest="{{ dest }}" mode="{{ mode }}"
+    loop_control:
+      label: "{{ dest }}"
+    vars:
+      src: "{{ role_path }}/files/prometheus-nagios-exporter/nagios_exporter.py"
+      dest: "{{ nagios.prefix.home }}/prometheus-nagios-exporter/prometheus-nagios-exporter.py"
+      mode: +x
 
-- name: Template supervisord config for prometheus-nagios-exporter
-  template: src="{{ src }}" dest="{{ dest }}"
-  loop_control:
-    label: "{{ dest }}"
-  vars:
-    src: "supervisord.d/prometheus-nagios-exporter.conf.j2"
-    dest: "{{ supervisord.prefix.config }}/prometheus-nagios-exporter.conf"
-  notify: Restart Supervisord
+  - name: Template supervisord config for prometheus-nagios-exporter
+    template: src="{{ src }}" dest="{{ dest }}"
+    loop_control:
+      label: "{{ dest }}"
+    vars:
+      src: "supervisord.d/prometheus-nagios-exporter.conf.j2"
+      dest: "{{ supervisord.prefix.config }}/prometheus-nagios-exporter.conf"
+    notify: Restart Supervisord
+
+  when: nagios.prometheus_nagios_exporter
