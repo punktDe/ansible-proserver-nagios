@@ -13,4 +13,4 @@ if __name__ == '__main__':
     if not os.path.isfile(command[0]):
         print('Nagios plugin executor: plugin not found')
         sys.exit(1)
-    os.execv(command[0], command)
+    os.execve(command[0], command, {'PATH': '/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin'})
