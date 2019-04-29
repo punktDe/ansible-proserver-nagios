@@ -4,13 +4,28 @@ import sys
 import socket
 import argparse
 import json
+import re
 from datetime import datetime
 from datetime import timedelta
 from urllib import request
 from urllib.error import HTTPError
 from urllib.parse import urlparse
 from ssl import CertificateError
-#import xml.etree.ElementTree as ET
+from html.parser import HTMLParser
+
+
+class HTMLLinkCollector(HTMLParser):
+    url = None
+    links = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'a':
+            for key_val in attrs:
+                if len(key_val) == 2 and key_val[0] == 'href':
+                    val = key_val[1]
+                    if urlparse(val).netloc == '':
+                        val = '{}://{}{}'.format(*urlparse(self.url)[:2], val)
+                    self.links.append(val)
 
 
 class HTML():
@@ -19,15 +34,14 @@ class HTML():
     request_method = None
     request_body = None
     request_content_type = None
-    #dom = None
+    _links = None
 
-    def __init__(self, url, request_method, request_content_type, request_body):
+    def __init__(self, url, request_method='GET', request_content_type=None, request_body=None):
         self.url = url
         self.request_method = request_method
         self.request_content_type = request_content_type
         self.request_body = request_body
         self.fetch()
-        #self.parse()
 
     def fetch(self):
         try:
@@ -53,8 +67,13 @@ class HTML():
             else:
                 raise e
 
-    #def parse(self):
-    #    self.dom = ET.fromstring(self.body.decode())
+    def collect_links(self):
+        if self._links is not None:
+            return self._links
+        collector = HTMLLinkCollector()
+        collector.url = self.url
+        collector.feed(self.body)
+        self._links = collector.links
 
     def check_str(self, text, count=None, min=None, max=None):
         text_count = self.body.count(text)
@@ -92,6 +111,17 @@ class HTML():
         else:
             raise ValueError('Invalid operator: {}'.format(operator))
 
+    def check_links(self, expr, status):
+        self.collect_links()
+        expr = re.compile(expr)
+        for link in self._links:
+            if expr.match(link):
+                html = HTML(link)
+                if html.status != status:
+                    return False, "http status of '{}' is {} (expected {})".format(link, html.status, status)
+
+        return True, ''
+
     def check_status(self, expected_status):
         information_text = 'Status {}'.format(self.status)
         if self.status != expected_status:
@@ -106,7 +136,8 @@ class NagiosPlugin:
 
     def submit_check(self, check_status, information_text):
         self._next_service_status(check_status.upper())
-        self.information_text.append(information_text)
+        if information_text:
+            self.information_text.append(information_text)
 
     def _next_service_status(self, new_status):
         if new_status not in ('OK', 'WARNING', 'CRITICAL', 'UNKNOWN'):
@@ -177,6 +208,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--url', required=True)
     parser.add_argument('--check-status')
+    parser.add_argument('--check-links', nargs='+')
     parser.add_argument('--check-str', action='append')
     parser.add_argument('--check-json', action='append')
     parser.add_argument('--check-ip', nargs='+')
@@ -188,9 +220,15 @@ def parse_args():
     return parser.parse_args()
 
 
+def parse_str_str_int(txt):
+    sep = txt.split(':')
+    return [sep[0], sep[1], int(sep[2])]
+
+
 def parse_str_str_str_str(txt):
     sep = txt.split(':')
     return [sep[0], sep[1], sep[2], sep[3]]
+
 
 def parse_str_int_req(txt):
     sep = txt.split(':')
@@ -243,6 +281,11 @@ if __name__ == '__main__':
     for check in args.check_json or []:
         parsed_check = parse_str_str_str_str(check)
         check_is_ok, check_information_text = html.check_json(*parsed_check[1:])
+        nagios_plugin.submit_check(parsed_check[0] if not check_is_ok else 'OK', check_information_text)
+
+    for check in args.check_links or []:
+        parsed_check = parse_str_str_int(check)
+        check_is_ok, check_information_text = html.check_links(*parsed_check[1:])
         nagios_plugin.submit_check(parsed_check[0] if not check_is_ok else 'OK', check_information_text)
 
     print(nagios_plugin.output())
