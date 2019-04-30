@@ -99,6 +99,6 @@
     label: "{{ known_hosts }} host_name={{ host_name }}"
   vars:
     known_hosts: "{{ nagios.prefix.home }}/.ssh/known_hosts"
-    host_name: "{{ hostvars[item].ansible_local.proserver.public_ipv4_address }}"
+    host_name: "{{ hostvars[item].ansible_local.proserver.network.public_ipv4_address }}"
     host_key: "{{ lookup('file', role_path + '/files/public_keys/{{ hostvars[item].inventory_hostname }}.pub') }}"
   with_items: "{{ groups['nagiosclient'] }}"
