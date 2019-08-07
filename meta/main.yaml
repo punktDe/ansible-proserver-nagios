@@ -1,6 +1,6 @@
 ---
 dependencies:
-  - { role: nginx }
-  - { role: php }
-  - { role: oauth2_proxy }
-  - { role: supervisord }
+  - role: nginx
+  - role: php
+  - role: oauth2_proxy
+  - role: supervisord
