@@ -14,3 +14,5 @@ nagios:
   date_format: euro
   sshd_public_key: /etc/ssh/ssh_host_ed25519_key.pub
   prometheus_nagios_exporter: no
+  rc_conf:
+    PATH: /sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin

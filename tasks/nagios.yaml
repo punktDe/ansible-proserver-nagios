@@ -31,6 +31,16 @@
     - "{{ role_path }}/templates/nagios/objects/*.cfg"
   notify: Restart Nagios
 
+- name: Template Nagios service configuration
+  template: src="{{ item.src }}" dest="{{ item.dest }}"
+  loop_control:
+    label: "{{ item.dest }}"
+  with_items:
+    - src: rc.conf.d/nagios
+      dest: /usr/local/etc/rc.conf.d/nagios
+  notify:
+    - Restart Nagios
+
 - name: Enable Nagios service
   lineinfile: path="{{ item.path }}" regexp="{{ item.regexp }}" line="{{ item.line }}"
   loop_control:
