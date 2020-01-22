@@ -13,7 +13,6 @@ if __name__ == '__main__':
     if not os.path.isfile(command[0]):
         print('Nagios plugin executor: plugin not found')
         sys.exit(1)
-    env = os.environ.copy()
     os.execve(command[0], command, {
         'HOME': os.environ['HOME'],
         'PATH': '/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin',
