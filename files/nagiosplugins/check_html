@@ -96,20 +96,30 @@ class HTML():
                 data = data[subkey]
             except KeyError as e:
                 return False, "key '{}' not found in JSON".format(key)
+
         information_text = "{} is '{}'".format(key, data)
+
         if operator == '==':
-            if str(data) == value:
-                return True, information_text
-            else:
-                return False, "{} (expected '{}')".format(information_text, value)
+            result = str(data) == value
+            value = f"'{value}'"
         elif operator == '!=':
-            information_text = "{} (expected !='{}')".format(information_text, value)
-            if str(data) == value:
-                return False, information_text
-            else:
-                return True, information_text
+            result = str(data) != value
+            value = f"'{value}'"
+        elif operator == '>=':
+            result = int(data) >= int(value)
+        elif operator == '>':
+            result = int(data) > int(value)
+        elif operator == '<=':
+            result = int(data) <= int(value)
+        elif operator == '<':
+            result = int(data) < int(value)
         else:
             raise ValueError('Invalid operator: {}'.format(operator))
+
+        if result:
+            return True, information_text
+        else:
+            return False, f"{information_text} not {operator} {value})"
 
     def check_links(self, expr, status):
         self.collect_links()
