@@ -90,12 +90,12 @@ class HTML():
         try:
             data = json.loads(self.body)
         except Exception as e:
-            return False, 'response is not valid JSON: {}'.format(str(e))
+            return False, 'response is not valid JSON: {}'.format(str(e)), {}
         for subkey in key.split('.'):
             try:
                 data = data[subkey]
             except KeyError as e:
-                return False, "key '{}' not found in JSON".format(key)
+                return False, "key '{}' not found in JSON".format(key), {}
 
         information_text = "{} is '{}'".format(key, data)
 
@@ -116,10 +116,14 @@ class HTML():
         else:
             raise ValueError('Invalid operator: {}'.format(operator))
 
+        performance_data = {}
+        if str(data).replace('.', '', 1).isdigit():
+            performance_data[key] = int(data)
+
         if result:
-            return True, information_text
+            return True, information_text, performance_data
         else:
-            return False, f"{information_text} not {operator} {value})"
+            return False, f"{information_text} not {operator} {value})", performance_data
 
     def check_links(self, expr, status):
         self.collect_links()
@@ -143,11 +147,13 @@ class NagiosPlugin:
     def __init__(self):
         self.service_status = None
         self.information_text = []
+        self.performance_data = {}
 
-    def submit_check(self, check_status, information_text):
+    def submit_check(self, check_status, information_text, performance_data=lambda: {}):
         self._next_service_status(check_status.upper())
         if information_text:
             self.information_text.append(information_text)
+        self.performance_data.update(performance_data)
 
     def _next_service_status(self, new_status):
         if new_status not in ('OK', 'WARNING', 'CRITICAL', 'UNKNOWN'):
@@ -162,8 +168,19 @@ class NagiosPlugin:
         elif self.service_status == 'WARNING' and new_status == 'CRITICAL':
             self.service_status = new_status
 
+    def _performance_data_output(self):
+        output = ''
+        first = True
+        for key, value in self.performance_data.items():
+            if first:
+                first = False
+            else:
+                output += ' '
+            output += f'{key}={value}'
+        return output
+
     def output(self):
-        return 'HTML {}: {}'.format(self.service_status or 'UNKNOWN', ', '.join(self.information_text))
+        return 'HTML {}: {} | {}'.format(self.service_status or 'UNKNOWN', ', '.join(self.information_text), self._performance_data_output())
 
     def status(self):
         if self.service_status == 'OK':
@@ -290,8 +307,8 @@ if __name__ == '__main__':
 
     for check in args.check_json or []:
         parsed_check = parse_str_str_str_str(check)
-        check_is_ok, check_information_text = html.check_json(*parsed_check[1:])
-        nagios_plugin.submit_check(parsed_check[0] if not check_is_ok else 'OK', check_information_text)
+        check_is_ok, check_information_text, performance_data = html.check_json(*parsed_check[1:])
+        nagios_plugin.submit_check(parsed_check[0] if not check_is_ok else 'OK', check_information_text, performance_data)
 
     for check in args.check_links or []:
         parsed_check = parse_str_str_int(check)
